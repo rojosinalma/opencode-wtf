@@ -120,7 +120,7 @@ export function journalWindow(sinceMs: number, untilMs: number, sessionID: strin
     if (!line.includes(sessionID) && !JOURNAL_PATTERNS.some((rx) => rx.test(line))) continue
     // Drop the "host opencode[pid]: timestamp=… level=" preamble; the short-iso stamp suffices.
     const compact = line
-      .replace(/ \S+ opencode\[\d+\]: timestamp=\S+ /, " ")
+      .replace(/ \S+ opencode\[\d+\]: (timestamp=\S+ )?/, " ")
       .replace(/ run=\S+/, "")
       .replace(/ http\.span=\S+/, "")
       .replace(/ role=server$/, "")
@@ -133,7 +133,14 @@ export function journalWindow(sinceMs: number, untilMs: number, sessionID: strin
   return matched
 }
 
-export type Evidence = { text: string; outcome: string; turnStart?: number; turnEnd?: number }
+export type Evidence = {
+  text: string
+  outcome: string
+  turnStart?: number
+  turnEnd?: number
+  // Model of the last assistant step: the session's effective model when it has none set explicitly.
+  lastModel?: { id: string; providerID: string; variant?: string }
+}
 
 export function gather(sessionID: string, options: Partial<EvidenceOptions> = {}): Evidence {
   const opts = { ...EVIDENCE_DEFAULTS, ...options }
@@ -189,7 +196,9 @@ export function gather(sessionID: string, options: Partial<EvidenceOptions> = {}
   lines.push(`title: ${session.title ?? ""}`)
   lines.push(`turn: ${iso(turnStart)} → ${iso(turnEnd)} (${slice.length} rows, seq ${slice[0]?.seq}..${slice[slice.length - 1]?.seq})`)
   if (unfinished) {
-    lines.push("ENDED: no — the turn has no `idle` row: killed mid-step (server restart/crash, or still running).")
+    const ageS = Math.round((Date.now() - (turnEnd ?? 0)) / 1000)
+    const hint = ageS < 180 ? "last row is recent, the turn may still be running" : "killed mid-step, likely a server restart/crash — see journal"
+    lines.push(`ENDED: no — the turn has no \`idle\` row (last row ${ageS}s ago): ${hint}.`)
   } else {
     lines.push(`ENDED: outcome=${idleData?.outcome ?? "?"}${idleData?.error ? ` error=${errorString(idleData.error, opts.errorChars)}` : ""}`)
   }
@@ -238,14 +247,25 @@ export function gather(sessionID: string, options: Partial<EvidenceOptions> = {}
   if (pending.length) {
     lines.push(`pending inbox: ${pending.map((p) => `${p.type}${p.delivery ? `/${p.delivery}` : ""}@${iso(p.time_created)}`).join(", ")}`)
   }
-  lines.push(`session now: model=${session.model ?? "?"} agent=${session.agent ?? "?"}`)
+  lines.push(`session now: model=${modelString(parseJSON<ModelRef>(session.model))} agent=${session.agent ?? "?"}`)
 
   const journal = turnStart ? journalWindow(turnStart, turnEnd ?? turnStart, sessionID, opts.journalLines) : []
   lines.push(`journal (opencode.service, ${journal.length} matching lines):`)
   for (const line of journal) lines.push(`  ${line}`)
   if (!journal.length) lines.push("  (none)")
 
-  return { text: capBytes(lines.join("\n"), opts.maxBytes), outcome, turnStart, turnEnd }
+  const lastStep = assistants.length ? parse<Assistant>(assistants[assistants.length - 1]) : undefined
+  const lastModel = lastStep?.model?.id && lastStep.model.providerID ? (lastStep.model as Evidence["lastModel"]) : undefined
+  return { text: capBytes(lines.join("\n"), opts.maxBytes), outcome, turnStart, turnEnd, lastModel }
+}
+
+function parseJSON<T>(text: string | null): T | undefined {
+  if (!text) return undefined
+  try {
+    return JSON.parse(text) as T
+  } catch {
+    return undefined
+  }
 }
 
 function findLast<T>(items: T[], predicate: (item: T) => boolean): number {
