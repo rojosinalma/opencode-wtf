@@ -12,12 +12,15 @@ export type EvidenceOptions = {
   maxBytes: number
   journalLines: number
   errorChars: number
+  // systemd user unit the server runs as; "" disables the journal section.
+  journalUnit: string
 }
 
 export const EVIDENCE_DEFAULTS: EvidenceOptions = {
   maxBytes: 8192,
   journalLines: 40,
   errorChars: 300,
+  journalUnit: "opencode",
 }
 
 type Row = { id: string; type: string; seq: number; time_created: number; data: string }
@@ -101,15 +104,24 @@ const JOURNAL_PATTERNS = [
 ]
 const JOURNAL_NOISE = [/message="spawning process"/, /message="watcher subscribe"/]
 
-export function journalWindow(sinceMs: number, untilMs: number, sessionID: string, maxLines: number): string[] {
+// Journal lines of the server's systemd user unit in the turn's window. Degrades to one
+// explanatory line when journalctl is missing (non-systemd host) or the unit is unknown, so the
+// rest of the evidence is still produced.
+export function journalWindow(sinceMs: number, untilMs: number, sessionID: string, maxLines: number, unit: string = EVIDENCE_DEFAULTS.journalUnit): string[] {
+  if (!unit) return []
   const since = new Date(sinceMs - 5_000).toISOString()
   const until = new Date(untilMs + 5_000).toISOString()
   let out = ""
   try {
+    if (!Bun.which("journalctl")) return ["(journalctl not found: no systemd journal on this host)"]
     const proc = Bun.spawnSync(
-      ["journalctl", "--user", "-u", "opencode", "-o", "short-iso", "--no-pager", "--since", since, "--until", until],
+      ["journalctl", "--user", "-u", unit, "-o", "short-iso", "--no-pager", "--since", since, "--until", until],
       { stdout: "pipe", stderr: "pipe" },
     )
+    if (proc.exitCode !== 0) {
+      const err = proc.stderr.toString().trim().split("\n")[0] ?? ""
+      return [`(journalctl --user -u ${unit} failed: ${clip(err || `exit ${proc.exitCode}`, 200)})`]
+    }
     out = proc.stdout.toString()
   } catch (error) {
     return [`(journalctl unavailable: ${error instanceof Error ? error.message : String(error)})`]
@@ -120,7 +132,7 @@ export function journalWindow(sinceMs: number, untilMs: number, sessionID: strin
     if (!line.includes(sessionID) && !JOURNAL_PATTERNS.some((rx) => rx.test(line))) continue
     // Drop the "host opencode[pid]: timestamp=… level=" preamble; the short-iso stamp suffices.
     const compact = line
-      .replace(/ \S+ opencode\[\d+\]: (timestamp=\S+ )?/, " ")
+      .replace(/ \S+ [^\s\[]+\[\d+\]: (timestamp=\S+ )?/, " ")
       .replace(/ run=\S+/, "")
       .replace(/ http\.span=\S+/, "")
       .replace(/ role=server$/, "")
@@ -249,10 +261,12 @@ export function gather(sessionID: string, options: Partial<EvidenceOptions> = {}
   }
   lines.push(`session now: model=${modelString(parseJSON<ModelRef>(session.model))} agent=${session.agent ?? "?"}`)
 
-  const journal = turnStart ? journalWindow(turnStart, turnEnd ?? turnStart, sessionID, opts.journalLines) : []
-  lines.push(`journal (opencode.service, ${journal.length} matching lines):`)
-  for (const line of journal) lines.push(`  ${line}`)
-  if (!journal.length) lines.push("  (none)")
+  if (opts.journalUnit) {
+    const journal = turnStart ? journalWindow(turnStart, turnEnd ?? turnStart, sessionID, opts.journalLines, opts.journalUnit) : []
+    lines.push(`journal (${opts.journalUnit}.service, ${journal.length} matching lines):`)
+    for (const line of journal) lines.push(`  ${line}`)
+    if (!journal.length) lines.push("  (none)")
+  }
 
   const lastStep = assistants.length ? parse<Assistant>(assistants[assistants.length - 1]) : undefined
   const lastModel = lastStep?.model?.id && lastStep.model.providerID ? (lastStep.model as Evidence["lastModel"]) : undefined

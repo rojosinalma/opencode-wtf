@@ -35,6 +35,7 @@ No runtime dependencies: SQLite comes from `bun:sqlite`, `@opencode/plugin` is i
 | `max_evidence_bytes` | `8192` | cap on the evidence block handed to the model |
 | `journal_lines` | `40` | journal lines included around the failing turn |
 | `error_chars` | `300` | truncation of each error message |
+| `journal_unit` | `opencode` | systemd **user** unit the server runs as (`journalctl --user -u <unit>`); `""` drops the journal section |
 | `restore_timeout_ms` | `600000` | how long to wait for the explaining turn before restoring the model anyway |
 | `small_agent` | `title` | agent whose model is used as the "small model" |
 | `debug` | `false` | verbose logging |
@@ -42,10 +43,10 @@ No runtime dependencies: SQLite comes from `bun:sqlite`, `@opencode/plugin` is i
 ## How it works
 
 1. `ctx.command.transform` registers `/wtf`; the argument may name another session (`ses_…`), default is the invoking one.
-2. `evidence.ts` opens `$XDG_DATA_HOME/opencode/opencode.db` read-only, finds the last ended turn and collects the fields above plus `journalctl --user -u opencode` for its time window.
+2. `evidence.ts` opens `$XDG_DATA_HOME/opencode/opencode.db` read-only, finds the last ended turn and collects the fields above plus `journalctl --user -u <journal_unit>` for its time window.
 3. The prompt is run on the small model; `[wtf]` log lines show the model switch and restore.
 
 ## Caveats
 
-- Assumes a Linux host with the server as a systemd **user** unit named `opencode` (`journalctl --user -u opencode`); elsewhere the journal section reads "unavailable" and the rest still works.
+- The journal section needs a Linux host running the server as a systemd **user** unit (`journal_unit`); without `journalctl`, or when the command fails, that section carries one explanatory line and the rest still works.
 - Loaded per location boot; running locations keep the plugin set they started with.

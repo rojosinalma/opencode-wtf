@@ -4,7 +4,7 @@ import { gather } from "./evidence"
 
 // `/wtf [ses_…]`: explains why the previous turn of the invoking session (or the given one)
 // stopped. The evidence — finish reasons, provider errors, tool errors, model/agent switches,
-// pending inbox items and the matching opencode.service journal window — is gathered here from
+// pending inbox items and the matching server journal window (`journal_unit`) — is gathered here from
 // the SQLite DB (read-only) and journalctl, never from message text, and the explanation runs
 // on the configured small model (`small_model`, which the server normalises to the `title`
 // agent's model) so the outage that killed the previous turn cannot kill the explanation. The
@@ -14,6 +14,7 @@ export type Options = {
   maxEvidenceBytes: number
   journalLines: number
   errorChars: number
+  journalUnit: string
   restoreTimeoutMs: number
   smallAgent: string
   debug: boolean
@@ -24,6 +25,7 @@ export function resolveOptions(raw: Readonly<Record<string, any>> = {}): Options
     maxEvidenceBytes: Number(raw.max_evidence_bytes ?? 8192),
     journalLines: Number(raw.journal_lines ?? 40),
     errorChars: Number(raw.error_chars ?? 300),
+    journalUnit: typeof raw.journal_unit === "string" ? raw.journal_unit : "opencode",
     restoreTimeoutMs: Number(raw.restore_timeout_ms ?? 10 * 60 * 1000),
     smallAgent: String(raw.small_agent ?? "title"),
     debug: raw.debug === true,
@@ -124,6 +126,7 @@ const plugin: Plugin.Plugin = {
             maxBytes: opts.maxEvidenceBytes,
             journalLines: opts.journalLines,
             errorChars: opts.errorChars,
+            journalUnit: opts.journalUnit,
           })
 
           // A session without an explicit model runs on its agent's default; restoring to the
