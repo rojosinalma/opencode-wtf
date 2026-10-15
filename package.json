@@ -1,0 +1,11 @@
+{
+  "name": "opencode-wtf",
+  "version": "0.1.0",
+  "description": "OpenCode plugin: /wtf command that explains why the previous turn stopped",
+  "type": "module",
+  "license": "MIT",
+  "main": "index.ts",
+  "devDependencies": {
+    "@opencode/plugin": "latest"
+  }
+}
