@@ -2,10 +2,24 @@
   "name": "opencode-wtf",
   "version": "0.2.0",
   "description": "OpenCode plugin: /wtf command that explains why the previous turn stopped",
-  "type": "module",
+  "author": "rojosinalma",
   "license": "MIT",
+  "type": "module",
   "main": "index.ts",
+  "keywords": [
+    "opencode",
+    "opencode-plugin",
+    "ai-agents",
+    "debugging",
+    "observability",
+    "cli"
+  ],
+  "homepage": "https://github.com/rojosinalma/opencode-wtf",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/rojosinalma/opencode-wtf"
+  },
   "devDependencies": {
-    "@opencode/plugin": "latest"
+    "@opencode/plugin": "2.0.30"
   }
 }
