@@ -6,6 +6,12 @@
   "license": "MIT",
   "type": "module",
   "main": "index.ts",
+  "bin": {
+    "wtf-evidence": "bin/wtf-evidence"
+  },
+  "scripts": {
+    "test": "bun test"
+  },
   "keywords": [
     "opencode",
     "opencode-plugin",

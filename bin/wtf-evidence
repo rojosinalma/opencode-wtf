@@ -1,0 +1,18 @@
+#!/usr/bin/env bun
+// wtf-evidence [ses_…] — print the metadata-only evidence the /wtf command feeds its model.
+// Default session: $OPENCODE_SESSION_ID, else the most recently updated session.
+import { gather, newestSessionID } from "../evidence"
+
+const arg = process.argv[2]
+if (arg === "-h" || arg === "--help") {
+  console.log("usage: wtf-evidence [ses_…]   (default: $OPENCODE_SESSION_ID, else newest session)")
+  console.log("env:   OPENCODE_DB overrides the database path; WTF_JOURNAL_UNIT the systemd user unit (\"\" = no journal)")
+  process.exit(0)
+}
+const sessionID = arg || process.env["OPENCODE_SESSION_ID"] || newestSessionID()
+if (!sessionID) {
+  console.error("wtf-evidence: no session id given and none found")
+  process.exit(1)
+}
+const unit = process.env["WTF_JOURNAL_UNIT"]
+console.log(gather(sessionID, unit === undefined ? {} : { journalUnit: unit }).text)

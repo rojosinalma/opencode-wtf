@@ -1,6 +1,7 @@
-// Type-only import: Bun resolves bare specifiers from the symlink's real path, where no node_modules exists.
+// Type-only import: the plugin directory may have no node_modules of its own, so nothing from
+// @opencode/plugin is needed at runtime.
 import type { Plugin } from "@opencode/plugin"
-import { gather } from "./evidence"
+import { DEFAULT_JOURNAL_PATTERNS, gather } from "./evidence"
 
 // `/wtf [ses_…]`: explains why the previous turn of the invoking session (or the given one)
 // stopped. The evidence — finish reasons, provider errors, tool errors, model/agent switches,
@@ -15,6 +16,7 @@ export type Options = {
   journalLines: number
   errorChars: number
   journalUnit: string
+  journalPatterns: string[]
   restoreTimeoutMs: number
   smallAgent: string
   debug: boolean
@@ -26,6 +28,9 @@ export function resolveOptions(raw: Readonly<Record<string, any>> = {}): Options
     journalLines: Number(raw.journal_lines ?? 40),
     errorChars: Number(raw.error_chars ?? 300),
     journalUnit: typeof raw.journal_unit === "string" ? raw.journal_unit : "opencode",
+    journalPatterns: Array.isArray(raw.journal_patterns)
+      ? raw.journal_patterns.filter((p: unknown): p is string => typeof p === "string")
+      : DEFAULT_JOURNAL_PATTERNS,
     restoreTimeoutMs: Number(raw.restore_timeout_ms ?? 10 * 60 * 1000),
     smallAgent: String(raw.small_agent ?? "title"),
     debug: raw.debug === true,
@@ -127,6 +132,7 @@ const plugin: Plugin.Plugin = {
             journalLines: opts.journalLines,
             errorChars: opts.errorChars,
             journalUnit: opts.journalUnit,
+            journalPatterns: opts.journalPatterns,
           })
 
           // A session without an explicit model runs on its agent's default; restoring to the

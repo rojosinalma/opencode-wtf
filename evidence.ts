@@ -1,5 +1,5 @@
-// Evidence for "why did the last turn stop": a metadata-only read of the opencode SQLite DB
-// plus the matching journal window. Shared by the plugin (index.ts) and the wtf-evidence CLI.
+// Evidence for "why did the last turn stop": a metadata-only read of the OpenCode SQLite DB
+// plus the matching journal window. Shared by the plugin (index.ts) and the bin/wtf-evidence CLI.
 //
 // Deliberately never includes user or assistant message TEXT: a content-filter stop must not
 // re-trigger when the evidence is fed back to a model. Finish reasons, error objects, tool names
@@ -14,13 +14,22 @@ export type EvidenceOptions = {
   errorChars: number
   // systemd user unit the server runs as; "" disables the journal section.
   journalUnit: string
+  // Extra regular expressions (as source strings) that select journal lines in addition to the
+  // session id and the built-in server-lifecycle patterns: typically the log prefixes of companion
+  // plugins whose decisions can end a turn.
+  journalPatterns: string[]
 }
+
+// Log prefixes of companion plugins (model swaps on rate limits, question-tool gating) whose
+// journal lines explain a stop from outside the turn.
+export const DEFAULT_JOURNAL_PATTERNS = ["\\[model-fallback\\]", "\\[question-gate\\]"]
 
 export const EVIDENCE_DEFAULTS: EvidenceOptions = {
   maxBytes: 8192,
   journalLines: 40,
   errorChars: 300,
   journalUnit: "opencode",
+  journalPatterns: DEFAULT_JOURNAL_PATTERNS,
 }
 
 type Row = { id: string; type: string; seq: number; time_created: number; data: string }
@@ -87,11 +96,9 @@ function parse<T>(row: Row): T | undefined {
   }
 }
 
-// Session-id plus a few duplicate-safe patterns that explain a stop from outside the turn:
-// our own plugins, server lifecycle, warnings and errors.
-const JOURNAL_PATTERNS = [
-  /\[model-fallback\]/,
-  /\[question-gate\]/,
+// Patterns that explain a stop from outside the turn: this plugin's own lines, server lifecycle,
+// warnings and errors. Companion plugins' prefixes come from `journalPatterns`.
+const BUILTIN_JOURNAL_PATTERNS = [
   /\[wtf\]/,
   /level=WARN/,
   /level=ERROR/,
@@ -104,10 +111,50 @@ const JOURNAL_PATTERNS = [
 ]
 const JOURNAL_NOISE = [/message="spawning process"/, /message="watcher subscribe"/]
 
+// Compile the configured pattern sources; an invalid regular expression is skipped rather than
+// taking the whole journal section down.
+export function compileJournalPatterns(sources: string[]): RegExp[] {
+  const compiled: RegExp[] = []
+  for (const source of sources) {
+    try {
+      compiled.push(new RegExp(source))
+    } catch {
+      // skipped
+    }
+  }
+  return compiled
+}
+
+// Whether a journal line belongs in the evidence: not noise, and either carries the session id
+// or matches one of the built-in or configured patterns.
+export function journalLineMatches(line: string, sessionID: string, extra: RegExp[]): boolean {
+  if (!line || JOURNAL_NOISE.some((rx) => rx.test(line))) return false
+  if (line.includes(sessionID)) return true
+  return BUILTIN_JOURNAL_PATTERNS.some((rx) => rx.test(line)) || extra.some((rx) => rx.test(line))
+}
+
+// Drop the "host opencode[pid]: timestamp=… level=" preamble (the short-iso stamp suffices) and
+// the per-request identifiers that carry no explanation.
+export function compactJournalLine(line: string): string {
+  const compact = line
+    .replace(/ \S+ [^\s\[]+\[\d+\]: (timestamp=\S+ )?/, " ")
+    .replace(/ run=\S+/, "")
+    .replace(/ http\.span=\S+/, "")
+    .replace(/ role=server$/, "")
+  return clip(compact, 300)
+}
+
 // Journal lines of the server's systemd user unit in the turn's window. Degrades to one
 // explanatory line when journalctl is missing (non-systemd host) or the unit is unknown, so the
 // rest of the evidence is still produced.
-export function journalWindow(sinceMs: number, untilMs: number, sessionID: string, maxLines: number, unit: string = EVIDENCE_DEFAULTS.journalUnit): string[] {
+export function journalWindow(
+  sinceMs: number,
+  untilMs: number,
+  sessionID: string,
+  maxLines: number,
+  unit: string = EVIDENCE_DEFAULTS.journalUnit,
+  patterns: string[] = EVIDENCE_DEFAULTS.journalPatterns,
+): string[] {
   if (!unit) return []
   const since = new Date(sinceMs - 5_000).toISOString()
   const until = new Date(untilMs + 5_000).toISOString()
@@ -126,17 +173,16 @@ export function journalWindow(sinceMs: number, untilMs: number, sessionID: strin
   } catch (error) {
     return [`(journalctl unavailable: ${error instanceof Error ? error.message : String(error)})`]
   }
+  return selectJournalLines(out.split("\n"), sessionID, maxLines, patterns)
+}
+
+// Filter, compact and cap raw journal lines. Pure: the testable half of `journalWindow`.
+export function selectJournalLines(raw: string[], sessionID: string, maxLines: number, patterns: string[]): string[] {
+  const extra = compileJournalPatterns(patterns)
   const matched: string[] = []
-  for (const line of out.split("\n")) {
-    if (!line || JOURNAL_NOISE.some((rx) => rx.test(line))) continue
-    if (!line.includes(sessionID) && !JOURNAL_PATTERNS.some((rx) => rx.test(line))) continue
-    // Drop the "host opencode[pid]: timestamp=… level=" preamble; the short-iso stamp suffices.
-    const compact = line
-      .replace(/ \S+ [^\s\[]+\[\d+\]: (timestamp=\S+ )?/, " ")
-      .replace(/ run=\S+/, "")
-      .replace(/ http\.span=\S+/, "")
-      .replace(/ role=server$/, "")
-    matched.push(clip(compact, 300))
+  for (const line of raw) {
+    if (!journalLineMatches(line, sessionID, extra)) continue
+    matched.push(compactJournalLine(line))
   }
   if (matched.length > maxLines) {
     const dropped = matched.length - maxLines
@@ -262,7 +308,7 @@ export function gather(sessionID: string, options: Partial<EvidenceOptions> = {}
   lines.push(`session now: model=${modelString(parseJSON<ModelRef>(session.model))} agent=${session.agent ?? "?"}`)
 
   if (opts.journalUnit) {
-    const journal = turnStart ? journalWindow(turnStart, turnEnd ?? turnStart, sessionID, opts.journalLines, opts.journalUnit) : []
+    const journal = turnStart ? journalWindow(turnStart, turnEnd ?? turnStart, sessionID, opts.journalLines, opts.journalUnit, opts.journalPatterns) : []
     lines.push(`journal (${opts.journalUnit}.service, ${journal.length} matching lines):`)
     for (const line of journal) lines.push(`  ${line}`)
     if (!journal.length) lines.push("  (none)")
@@ -287,7 +333,8 @@ function findLast<T>(items: T[], predicate: (item: T) => boolean): number {
   return -1
 }
 
-function capBytes(text: string, max: number): string {
+// Cap the evidence to `max` bytes (UTF-8), ending a cut text with a visible marker.
+export function capBytes(text: string, max: number): string {
   if (Buffer.byteLength(text) <= max) return text
   const marker = "\n(evidence truncated)"
   let cut = text
