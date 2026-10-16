@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/rojosinalma/opencode-wtf/security/advisories/new
+    about: Report security issues privately — never in a public issue.
+  - name: OpenCode plugin documentation
+    url: https://opencode.ai/docs/plugins
+    about: How OpenCode loads plugins and what a plugins[] entry looks like.

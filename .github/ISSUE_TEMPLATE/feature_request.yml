@@ -1,0 +1,38 @@
+name: Feature request
+description: Propose a change or an addition
+title: "feat: "
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What stop reason, evidence or workflow does `/wtf` not cover today?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: How should it work? A new evidence source, an option, a CLI flag…
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      multiple: true
+      options:
+        - Evidence (database)
+        - Evidence (journal)
+        - Explanation prompt / model switch
+        - CLI (bin/wtf-evidence)
+        - Options / configuration
+        - Other
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Scope check
+      options:
+        - label: The evidence stays metadata-only (no message text).
+        - label: I searched existing issues.

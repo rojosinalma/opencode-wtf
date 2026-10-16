@@ -3,7 +3,7 @@
   "version": "0.2.0",
   "description": "OpenCode plugin: /wtf command that explains why the previous turn stopped",
   "author": "rojosinalma",
-  "license": "MIT",
+  "license": "AGPL-3.0-only",
   "type": "module",
   "main": "index.ts",
   "bin": {

@@ -45,13 +45,31 @@ with `journal_unit: ""`. The suite runs on every push and pull request
 ## Commits and PRs
 
 Plain, descriptive commit messages in the imperative ("Add journal_patterns option"). One logical
-change per commit. Open a pull request against `main`; `run-tests` must be green. Document a new
-option in `docs/configuration.md` and, if it changes a flow, in `docs/SDD.md`.
+change per commit; every commit and tag is GPG-signed (`git config commit.gpgsign true`). Open a
+pull request against `main`; `run-tests` must be green. Document a new option in
+`docs/configuration.md` and, if it changes a flow, in `docs/SDD.md`; add a line under *Unreleased*
+in `CHANGELOG.md`.
+
+## Releasing
+
+Bump `version` in `package.json`, move the *Unreleased* section of `CHANGELOG.md` under the new
+version with the date, commit, then create a signed tag and a GitHub release whose notes are that
+changelog section:
+
+```sh
+git tag -s vX.Y.Z -m vX.Y.Z
+git push --follow-tags
+gh release create vX.Y.Z --title "opencode-wtf X.Y.Z" --notes-file <section>
+```
 
 ## Documentation
 
-- `README.md` — what it is, requirements, setup, licence. Nothing else goes there.
+- `README.md` — what it is, requirements, installation, usage, development, licence. Nothing else
+  goes there.
 - `docs/configuration.md` — every option, environment variable and the CLI.
 - `docs/SDD.md` — design: hooks, data read, flows, decisions, operations.
 - `docs/troubleshooting.md` — symptoms and their fixes.
+- `CHANGELOG.md` — product-level history, Keep a Changelog format.
+- `SECURITY.md` — how to report a vulnerability, supported versions.
+- `CODE_OF_CONDUCT.md` — Contributor Covenant 2.1.
 - `CONTRIBUTING.md` — this file.

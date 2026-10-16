@@ -1,0 +1,53 @@
+name: Bug report
+description: Something does not work as documented
+title: "bug: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: Thanks for the report. Remove session ids, hostnames and any token from logs before pasting.
+  - type: input
+    id: version
+    attributes:
+      label: opencode-wtf version
+      description: The tag you checked out, or the commit sha.
+      placeholder: v0.2.0
+    validations:
+      required: true
+  - type: input
+    id: opencode
+    attributes:
+      label: OpenCode and Bun versions
+      placeholder: opencode 2.0.30, bun 1.4.2
+    validations:
+      required: true
+  - type: dropdown
+    id: journal
+    attributes:
+      label: Journal
+      options:
+        - systemd user unit, journalctl available
+        - no journalctl (journal section disabled)
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What you did, what you expected, what you got.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. A turn stops without a reply
+        2. Type `/wtf`
+        3. …
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Relevant `[wtf]` lines from the server's stderr (`debug: true` adds detail), or the output of `bin/wtf-evidence`.
+      render: text
