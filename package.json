@@ -26,6 +26,6 @@
     "url": "https://github.com/rojosinalma/opencode-wtf"
   },
   "devDependencies": {
-    "@opencode/plugin": "2.0.30"
+    "@opencode/plugin": "2.1.3"
   }
 }
